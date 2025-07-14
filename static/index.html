@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPUS - Audio Transcription Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .gradient-bg {
+            background: radial-gradient( #000000 0%, #18042d 100%);
+        }
+        
+        .gradient-header {
+            background: linear-gradient(135deg, #033b6c 0%, #6b167e 100%);
+        }
+        
+        .gradient-btn {
+            background: linear-gradient(135deg, #033b6c 0%, #6b167e 100%);
+        }
+        
+        .gradient-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(1, 19, 34, 0.3);
+        }
+        
+        .gradient-btn.recording {
+            background: linear-gradient(135deg, #033b6c 0%, #6b167e 100%);
+        }
+        
+        .file-upload-area {
+            transition: all 0.3s ease;
+        }
+        
+        .file-upload-area:hover {
+            background-color: #f0f8ff;
+            border-color: #00f2fe;
+        }
+        
+        .file-upload-area.active {
+            background-color: #e6f3ff;
+            border-color: #00f2fe;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-5">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden">
+        <!-- Header -->
+        <div class="gradient-header py-8 px-8 text-center text-white">
+            <h1 class="text-4xl font-bold mb-3 tracking-wider">OPUS 9</h1>
+
+        </div>
+
+        <div class="p-8 space-y-8">
+            <!-- File Upload Section -->
+            <div class="bg-gray-50 p-8 rounded-xl ">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <span class="text-2xl mr-3">📁</span>
+                    Upload Audio File
+                </h2>
+                
+                <div class="relative">
+                    <input type="file" id="audioFile" accept=".mp3,.wav,.opus,.m4a,.ogg" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    <label for="audioFile" id="fileLabel" class="file-upload-area block p-8 bg-white border-2 border-dashed border-blue-400 rounded-lg text-center cursor-pointer">
+                        <div class="text-lg font-medium text-gray-600">Click to select audio file</div>
+                        <div class="text-sm text-gray-500 mt-2">Supports MP3, WAV, OPUS, M4A, OGG</div>
+                    </label>
+                </div>
+                
+                <div id="fileInfo" class="hidden mt-4 p-4 bg-blue-50 rounded-lg text-sm text-gray-700"></div>
+                
+                <button id="transcribeFile" class="gradient-btn text-white font-semibold py-4 px-8 rounded-lg w-full mt-6 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
+                    📝 Transcribe Audio File
+                </button>
+                
+                <div id="fileStatus" class="hidden mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
+                    Note: File transcription requires server-side processing. This demo shows the interface.
+                </div>
+            </div>
+
+            <!-- Live Recording Section -->
+            <div class="bg-gray-50 p-8 rounded-xl hidden">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <span class="text-2xl mr-3">🎤</span>
+                    Live Recording
+                </h2>
+                
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button id="startRecording" class="gradient-btn text-white font-semibold py-4 px-8 rounded-lg flex-1 transition-all duration-300">
+                        🎤 Start Recording
+                    </button>
+                    <button id="stopRecording" class="gradient-btn text-white font-semibold py-4 px-8 rounded-lg flex-1 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
+                        ⏹️ Stop Recording
+                    </button>
+                </div>
+                
+                <div id="recordingStatus" class="hidden mt-4 p-4 rounded-lg text-sm text-center"></div>
+            </div>
+
+            <!-- Transcription Results -->
+            <div class="bg-gray-50 p-8 rounded-xl ">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <span class="text-2xl mr-3">📄</span>
+                    Transcription Results
+                </h2>
+                
+                <textarea 
+                    id="transcriptArea" 
+                    class="w-full h-48 p-6 bg-white border-2 border-gray-200 rounded-lg text-lg leading-relaxed text-gray-700 resize-y focus:outline-none focus:border-blue-400 transition-colors" 
+                    placeholder="Your transcribed text will appear here..."
+                    readonly
+                ></textarea>
+                
+                <div class="flex flex-col sm:flex-row gap-4 mt-6">
+                    <button id="copyTranscript" class="gradient-btn text-white font-semibold py-4 px-8 rounded-lg flex-1 transition-all duration-300">
+                        📋 Copy Text
+                    </button>
+                    <button id="clearTranscript" class="gradient-btn text-white font-semibold py-4 px-8 rounded-lg flex-1 transition-all duration-300">
+                        🗑️ Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let recognition;
+        let isRecording = false;
+        let transcript = '';
+
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+            } else if ('SpeechRecognition' in window) {
+                recognition = new SpeechRecognition();
+            } else {
+                showStatus('recordingStatus', 'Speech recognition not supported in this browser.', 'error');
+                return false;
+            }
+
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = function() {
+                isRecording = true;
+                updateRecordingUI();
+                showStatus('recordingStatus', 'Recording... Speak now!', 'info');
+            };
+
+            recognition.onresult = function(event) {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                transcript = finalTranscript;
+                document.getElementById('transcriptArea').value = transcript + interimTranscript;
+            };
+
+            recognition.onerror = function(event) {
+                showStatus('recordingStatus', 'Error: ' + event.error, 'error');
+                isRecording = false;
+                updateRecordingUI();
+            };
+
+            recognition.onend = function() {
+                isRecording = false;
+                updateRecordingUI();
+                showStatus('recordingStatus', 'Recording stopped.', 'success');
+            };
+
+            return true;
+        }
+
+        function updateRecordingUI() {
+            const startBtn = document.getElementById('startRecording');
+            const stopBtn = document.getElementById('stopRecording');
+
+            if (isRecording) {
+                startBtn.disabled = true;
+                startBtn.classList.add('recording');
+                stopBtn.disabled = false;
+            } else {
+                startBtn.disabled = false;
+                startBtn.classList.remove('recording');
+                stopBtn.disabled = true;
+            }
+        }
+
+        function showStatus(elementId, message, type) {
+            const statusEl = document.getElementById(elementId);
+            statusEl.textContent = message;
+            statusEl.className = `mt-4 p-4 rounded-lg text-sm text-center ${getStatusClasses(type)}`;
+            statusEl.classList.remove('hidden');
+        }
+
+        function getStatusClasses(type) {
+            switch(type) {
+                case 'success':
+                    return 'bg-green-50 text-green-800 border border-green-200';
+                case 'error':
+                    return 'bg-red-50 text-red-800 border border-red-200';
+                case 'info':
+                default:
+                    return 'bg-blue-50 text-blue-800 border border-blue-200';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('startRecording').addEventListener('click', function() {
+            if (recognition) {
+                recognition.start();
+            } else {
+                showStatus('recordingStatus', 'Please initialize speech recognition first.', 'error');
+            }
+        });
+
+        document.getElementById('stopRecording').addEventListener('click', function() {
+            if (recognition && isRecording) {
+                recognition.stop();
+            }
+        });
+
+        document.getElementById('audioFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const fileLabel = document.getElementById('fileLabel');
+            const fileInfo = document.getElementById('fileInfo');
+            const transcribeBtn = document.getElementById('transcribeFile');
+
+            if (file) {
+                fileLabel.classList.add('active');
+                fileLabel.innerHTML = `
+                    <div class="text-lg font-medium text-gray-800">Selected: ${file.name}</div>
+                    <div class="text-sm text-gray-600 mt-2">Ready to transcribe</div>
+                `;
+                
+                const fileSize = (file.size / 1024 / 1024).toFixed(2);
+                fileInfo.innerHTML = `
+                    <div><strong>File:</strong> ${file.name}</div>
+                    <div><strong>Size:</strong> ${fileSize} MB</div>
+                    <div><strong>Type:</strong> ${file.type}</div>
+                `;
+                fileInfo.classList.remove('hidden');
+                
+                transcribeBtn.disabled = false;
+            } else {
+                fileLabel.classList.remove('active');
+                fileLabel.innerHTML = `
+                    <div class="text-lg font-medium text-gray-600">Click to select audio file</div>
+                    <div class="text-sm text-gray-500 mt-2">Supports MP3, WAV, OPUS, M4A, OGG</div>
+                `;
+                fileInfo.classList.add('hidden');
+                transcribeBtn.disabled = true;
+            }
+        });
+
+        document.getElementById('transcribeFile').addEventListener('click', async function() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                showStatus('fileStatus', 'No audio file selected.', 'error');
+                return;
+            }
+
+            showStatus('fileStatus', 'Uploading and transcribing... Please wait.', 'info');
+
+            try {
+                // Prepare form data for upload
+                const formData = new FormData();
+                formData.append('audio', file);
+
+                // Send file to your backend transcription endpoint
+                const response = await fetch('/api/transcribe', {
+                method: 'POST',
+                body: formData
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+                const data = await response.json();
+
+                // Assuming your backend sends { transcription: "text here" }
+                document.getElementById('transcriptArea').value = data.transcription;
+                showStatus('fileStatus', 'Transcription complete.', 'success');
+
+            } catch (err) {
+                showStatus('fileStatus', 'Transcription failed: ' + err.message, 'error');
+            }
+        });
+
+
+        document.getElementById('copyTranscript').addEventListener('click', function() {
+            const transcriptArea = document.getElementById('transcriptArea');
+            transcriptArea.select();
+            document.execCommand('copy');
+            
+            const btn = this;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        });
+
+        document.getElementById('clearTranscript').addEventListener('click', function() {
+            document.getElementById('transcriptArea').value = '';
+            transcript = '';
+        });
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!initSpeechRecognition()) {
+                document.getElementById('startRecording').disabled = true;
+                document.getElementById('stopRecording').disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>
